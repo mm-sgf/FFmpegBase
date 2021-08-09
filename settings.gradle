@@ -1,2 +1,3 @@
 rootProject.name = "FFmpegBase"
 include ':ffplayvideo'
+include ':espermission'
