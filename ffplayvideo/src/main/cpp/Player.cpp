@@ -79,6 +79,54 @@ int Player::prepare() {
     return 0;
 }
 
+int Player::play(JNIEnv *env, jobject surface) {
+    // 获取上面传下来的surface
+    nativeWindow = ANativeWindow_fromSurface(env, surface);
+
+    if (nativeWindow == 0) {
+        LOGE("Couldn't get native window from surface.\n");
+        return -1;
+    }
+
+    // 创建三个容器
+    //ffmpeg实例化  avFrame   实例化他的大小
+    avFrame = av_frame_alloc();
+    //ffmpeg实例化  avFrame
+    avPacket = av_packet_alloc();
+    //实例化    rgb
+    rgbFrame = av_frame_alloc();
+
+
+
+    // 获取指定宽高大小，一帧图片size
+    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGBA, p_width, p_height, 0);
+
+    // 申请输出buffer 内存， numBytes * sizeof(uint8_t)
+    outBuffer = static_cast<uint8_t *>(av_malloc(numBytes * sizeof(uint8_t)));
+
+    // 缓冲区设置给 rgbframe
+    av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, outBuffer, AV_PIX_FMT_RGBA, p_width, p_height, 1);
+
+    // 获取转换的上下文
+    swsContext = sws_getContext(p_width, p_height, avCodecContext->pix_fmt,
+                                p_width, p_height, AV_PIX_FMT_RGBA, SWS_BICUBIC, NULL, NULL, NULL);
+
+    int nativeWindowCode = ANativeWindow_setBuffersGeometry(nativeWindow, p_width, p_height, WINDOW_FORMAT_RGBA_8888);
+    if (0 > nativeWindowCode) {
+        LOGE("Couldn't set buffers geometry.\n");
+        ANativeWindow_release(nativeWindow);
+        return -2;
+    }
+    LOGE("ANativeWindow_setBuffersGeometry成功\n");
+
+
+    while (av_read_frame(avFormatContext, avPacket) >=0) {
+
+    }
+
+    return 0;
+}
+
 Player::~Player() {
 
 }

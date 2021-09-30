@@ -60,6 +60,7 @@ Java_com_cfox_ffplayvideo_PlayManager_native_1close(JNIEnv *env, jobject thiz) {
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_cfox_ffplayvideo_PlayManager_native_1play(JNIEnv *env, jobject thiz, jobject surface) {
-
-
+    if (p_player) {
+        p_player->play(env, surface);
+    }
 }
