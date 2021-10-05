@@ -72,7 +72,9 @@ int Player::prepare() {
         LOGE("open codec success code : %d" , openCodecCode);
         p_width = avCodecParameters->width;
         p_height = avCodecParameters->height;
-        LOGE("video width :%d height : %d" , p_width, p_height);
+        frame_rate = avCodecContext->framerate.num / avCodecContext->framerate.den;
+        frame_time = 1000000 / frame_rate;
+        LOGE("video width :%d height : %d  frame_rate: %d  frame_time:%d " , p_width, p_height, frame_rate, frame_time);
         p_javaCall->callWH(p_width, p_height);
     }
 
@@ -83,7 +85,7 @@ int Player::play(JNIEnv *env, jobject surface) {
     // 获取上面传下来的surface
     nativeWindow = ANativeWindow_fromSurface(env, surface);
 
-    if (nativeWindow == 0) {
+    if (nativeWindow == nullptr) {
         LOGE("Couldn't get native window from surface.\n");
         return -1;
     }
@@ -99,17 +101,21 @@ int Player::play(JNIEnv *env, jobject surface) {
 
 
     // 获取指定宽高大小，一帧图片size
-    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGBA, p_width, p_height, 0);
+    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGBA, p_width, p_height, 1);
+
+    LOGE("1 frame size: %d" , numBytes);
 
     // 申请输出buffer 内存， numBytes * sizeof(uint8_t)
     outBuffer = static_cast<uint8_t *>(av_malloc(numBytes * sizeof(uint8_t)));
 
     // 缓冲区设置给 rgbframe
-    av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, outBuffer, AV_PIX_FMT_RGBA, p_width, p_height, 1);
+    av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, outBuffer,
+                         AV_PIX_FMT_RGBA, p_width, p_height, 1);
 
     // 获取转换的上下文
     swsContext = sws_getContext(p_width, p_height, avCodecContext->pix_fmt,
-                                p_width, p_height, AV_PIX_FMT_RGBA, SWS_BICUBIC, NULL, NULL, NULL);
+                                p_width, p_height, AV_PIX_FMT_RGBA,
+                                SWS_BICUBIC, NULL, NULL, NULL);
 
     int nativeWindowCode = ANativeWindow_setBuffersGeometry(nativeWindow, p_width, p_height, WINDOW_FORMAT_RGBA_8888);
     if (0 > nativeWindowCode) {
@@ -119,10 +125,56 @@ int Player::play(JNIEnv *env, jobject surface) {
     }
     LOGE("ANativeWindow_setBuffersGeometry成功\n");
 
+    while (av_read_frame(avFormatContext, avPacket) >=0) {// 读出一帧数据
+        // 读出来的数据是否是视频数据
+        if (avPacket->stream_index == videoTrackIndex) {
+            int ret = avcodec_send_packet(avCodecContext, avPacket);// 解码数据
+            if(ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+                LOGE("解码出错");
+                return -3;
+            }
 
-    while (av_read_frame(avFormatContext, avPacket) >=0) {
+            ret = avcodec_receive_frame(avCodecContext, avFrame);// 获取解码数据
+            if (ret == AVERROR(EAGAIN)) {
+                continue;
+            } else if (ret < 0) {
+                break;
+            }
 
+            // 将解码数据进行转换，转换surface可播放的数据
+            sws_scale(swsContext,
+                      avFrame->data, avFrame->linesize, 0, avCodecContext->height,
+                      rgbFrame->data,rgbFrame->linesize );
+
+            if (ANativeWindow_lock(nativeWindow, &windowBuffer, NULL) < 0) {
+                LOGE("cannot lock window");
+            } else {
+                uint8_t *dst = static_cast<uint8_t *>(windowBuffer.bits);
+                for (int h  = 0; h < p_height; h++ ) {
+                    memcpy(dst + h * windowBuffer.stride * 4,
+                           outBuffer + h * rgbFrame->linesize[0],
+                           rgbFrame->linesize[0]);
+                    switch(avFrame->pict_type){
+                        case AV_PICTURE_TYPE_I:
+                            LOGE("I");
+                            break;
+                        case AV_PICTURE_TYPE_P:
+                            LOGE("P");
+                            break;
+                        case AV_PICTURE_TYPE_B:
+                            LOGE("B");
+                            break;
+                        default:
+                            ;break;
+                    }
+                }
+
+                av_usleep(frame_time);
+                ANativeWindow_unlockAndPost(nativeWindow);
+            }
+        }
     }
+    avformat_free_context(avFormatContext);
 
     return 0;
 }

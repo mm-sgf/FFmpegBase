@@ -37,6 +37,7 @@ private:
     AVCodec *avCodec;
 
     ANativeWindow* nativeWindow;
+    ANativeWindow_Buffer windowBuffer;
 
     AVPacket *avPacket;
     AVFrame *avFrame , *rgbFrame;
@@ -50,6 +51,9 @@ private:
 
     int p_width = 0;
     int p_height = 0;
+
+    int frame_rate = 0;
+    int frame_time = 0;
 
 };
 

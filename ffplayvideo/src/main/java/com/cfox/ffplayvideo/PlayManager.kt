@@ -76,8 +76,8 @@ class PlayManager(videoPath : String = "") {
     }
 
     fun play(surface: Surface) {
-
-
+        checkPrepare()
+        native_play(surface)
     }
 
 }
